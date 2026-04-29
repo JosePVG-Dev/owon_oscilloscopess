@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OWON SDS1202 - Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1923; color: #e0e6ed; min-height: 100vh; }
+        .header { background: linear-gradient(135deg, #1a2a3a 0%, #0f1923 100%); padding: 1.5rem 2rem; border-bottom: 2px solid #36a2eb; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 1.5rem; font-weight: 600; }
+        .header h1 span { color: #36a2eb; }
+        .header .subtitle { font-size: 0.85rem; color: #8899aa; margin-top: 0.25rem; }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .stat-card { background: #1a2a3a; border-radius: 12px; padding: 1.25rem; border: 1px solid #2a3a4a; transition: border-color 0.2s; }
+        .stat-card:hover { border-color: #36a2eb; }
+        .stat-card .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8899aa; margin-bottom: 0.5rem; }
+        .stat-card .value { font-size: 1.75rem; font-weight: 700; }
+        .stat-card .value.blue { color: #36a2eb; }
+        .stat-card .value.pink { color: #ff6384; }
+        .stat-card .value.yellow { color: #ffce56; }
+        .stat-card .value.green { color: #4bc0c0; }
+
+        .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .chart-card { background: #1a2a3a; border-radius: 12px; padding: 1.25rem; border: 1px solid #2a3a4a; }
+        .chart-card h3 { font-size: 0.9rem; color: #8899aa; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .chart-card canvas { max-height: 280px; }
+
+        .table-card { background: #1a2a3a; border-radius: 12px; padding: 1.25rem; border: 1px solid #2a3a4a; }
+        .table-card h3 { font-size: 0.9rem; color: #8899aa; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .filters { display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .filters select, .filters input { background: #0f1923; border: 1px solid #2a3a4a; color: #e0e6ed; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.85rem; }
+        .filters select:focus, .filters input:focus { outline: none; border-color: #36a2eb; }
+
+        table { width: 100%; border-collapse: collapse; }
+        thead th { text-align: left; padding: 0.75rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8899aa; border-bottom: 1px solid #2a3a4a; }
+        tbody td { padding: 0.65rem 0.75rem; font-size: 0.85rem; border-bottom: 1px solid #1f2f3f; }
+        tbody tr:hover { background: #1f2f3f; }
+        .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .badge-wave { background: #36a2eb22; color: #36a2eb; }
+        .badge-sea { background: #4bc0c022; color: #4bc0c0; }
+        .badge-ch1 { background: #36a2eb22; color: #36a2eb; }
+        .badge-ch2 { background: #ff638422; color: #ff6384; }
+
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .status-dot.green { background: #4bc0c0; }
+        .status-dot.yellow { background: #ffce56; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        .new-row { animation: fadeIn 0.3s ease-out; }
+
+        @media (max-width: 768px) {
+            .charts-grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            table { font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>OWON <span>SDS1202</span></h1>
+            <div class="subtitle">Dashboard de ondas y clasificacion maritima</div>
+        </div>
+        <div style="font-size:0.8rem; color:#8899aa; display:flex; align-items:center; gap:12px;">
+            <span id="statusIndicator"><span class="status-dot green"></span>Conectado</span>
+            <span id="lastUpdate"></span>
+            <button id="clearBtn" style="background:#ff638422;color:#ff6384;border:1px solid #ff6384;padding:0.4rem 0.9rem;border-radius:8px;cursor:pointer;font-size:0.8rem;font-weight:600;transition:background 0.2s;" onmouseover="this.style.background='#ff6384';this.style.color='#0f1923'" onmouseout="this.style.background='#ff638422';this.style.color='#ff6384'">Limpiar Registros</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">Total Lecturas</div>
+                <div class="value blue" id="totalCount">{{ stats.total }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Onda Mas Frecuente</div>
+                <div class="value pink" id="topWave">{{ stats.most_common_wave or 'N/A' }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Ola Mas Frecuente</div>
+                <div class="value yellow" id="topSea">{{ stats.most_common_sea or 'N/A' }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Frecuencia Promedio</div>
+                <div class="value green" id="avgFreq">{{ "%.2f"|format(stats.avg_frequency) }} Hz</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Amplitud Promedio</div>
+                <div class="value blue" id="avgAmp">{{ "%.4f"|format(stats.avg_amplitude) }} V</div>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>Distribucion de Ondas</h3>
+                <canvas id="waveChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Distribucion de Olas</h3>
+                <canvas id="seaChart"></canvas>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <h3>Lecturas Recientes</h3>
+            <div class="filters">
+                <select id="filterChannel">
+                    <option value="">Todos los canales</option>
+                    <option value="CH1">CH1</option>
+                    <option value="CH2">CH2</option>
+                </select>
+                <select id="filterWave">
+                    <option value="">Todos los tipos</option>
+                    <option value="senoidal">Senoidal</option>
+                    <option value="cuadrada">Cuadrada</option>
+                    <option value="triangular">Triangular</option>
+                    <option value="sierra">Sierra</option>
+                    <option value="ruido">Ruido</option>
+                </select>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha</th>
+                        <th>Canal</th>
+                        <th>Onda</th>
+                        <th>Ola</th>
+                        <th>Amplitud</th>
+                        <th>Frecuencia</th>
+                        <th>Periodo</th>
+                    </tr>
+                </thead>
+                <tbody id="readingsTable">
+                    {% for r in records %}
+                    <tr data-channel="{{ r.channel }}" data-wave="{{ r.wave_type }}">
+                        <td>{{ r.id }}</td>
+                        <td>{{ r.timestamp }}</td>
+                        <td><span class="badge badge-{{ 'ch1' if r.channel == 'CH1' else 'ch2' }}">{{ r.channel }}</span></td>
+                        <td><span class="badge badge-wave">{{ r.wave_type }}</span></td>
+                        <td><span class="badge badge-sea">{{ r.sea_type }}</span></td>
+                        <td>{{ "%.4f"|format(r.amplitude) if r.amplitude else "-" }}</td>
+                        <td>{{ "%.2f"|format(r.frequency) if r.frequency else "-" }} Hz</td>
+                        <td>{{ "%.6f"|format(r.period) if r.period else "-" }} s</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const waveLabels = {
+            "senoidal": "Senoidal",
+            "cuadrada": "Cuadrada",
+            "triangular": "Triangular",
+            "sierra": "Sierra",
+            "ruido": "Ruido"
+        };
+        const seaLabels = {
+            "ola suave": "Ola Suave",
+            "ola rompiente": "Ola Rompiente",
+            "ola de rebote": "Ola de Rebote",
+            "ola de tormenta": "Ola de Tormenta",
+            "mar agitado": "Mar Agitado"
+        };
+        const waveColors = {
+            "senoidal": "#36a2eb",
+            "cuadrada": "#ff6384",
+            "triangular": "#ffce56",
+            "sierra": "#4bc0c0",
+            "ruido": "#9966ff"
+        };
+        const seaColors = {
+            "ola suave": "#36a2eb",
+            "ola rompiente": "#ff6384",
+            "ola de rebote": "#ffce56",
+            "ola de tormenta": "#4bc0c0",
+            "mar agitado": "#9966ff"
+        };
+
+        let stats = {{ stats | tojson }};
+        let lastId = {{ records[0].id if records else 0 }};
+        let waveChartInstance = null;
+        let seaChartInstance = null;
+
+        function setStatus(connected) {
+            const el = document.getElementById('statusIndicator');
+            if (connected) {
+                el.innerHTML = '<span class="status-dot green"></span>Conectado';
+            } else {
+                el.innerHTML = '<span class="status-dot yellow"></span>Reconectando...';
+            }
+        }
+
+        function createWaveChart(statsData) {
+            if (waveChartInstance) waveChartInstance.destroy();
+            const labelsArr = Object.keys(statsData.wave_distribution).map(k => waveLabels[k] || k);
+            const dataArr = Object.values(statsData.wave_distribution);
+            const colorArr = Object.keys(statsData.wave_distribution).map(k => waveColors[k] || '#999');
+            waveChartInstance = new Chart(document.getElementById('waveChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: labelsArr,
+                    datasets: [{
+                        data: dataArr,
+                        backgroundColor: colorArr,
+                        borderColor: '#1a2a3a',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#e0e6ed', padding: 15 } }
+                    }
+                }
+            });
+        }
+
+        function createSeaChart(statsData) {
+            if (seaChartInstance) seaChartInstance.destroy();
+            const labelsArr = Object.keys(statsData.sea_distribution).map(k => seaLabels[k] || k);
+            const dataArr = Object.values(statsData.sea_distribution);
+            const colorArr = Object.keys(statsData.sea_distribution).map(k => seaColors[k] || '#999');
+            seaChartInstance = new Chart(document.getElementById('seaChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: labelsArr,
+                    datasets: [{
+                        data: dataArr,
+                        backgroundColor: colorArr,
+                        borderColor: '#1a2a3a',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#e0e6ed', padding: 15 } }
+                    }
+                }
+            });
+        }
+
+        createWaveChart(stats);
+        createSeaChart(stats);
+
+        document.getElementById('lastUpdate').textContent = 'Actualizado: ' + new Date().toLocaleString('es-ES');
+
+        function autoRefresh() {
+            setStatus(false);
+
+            fetch('/api/stats')
+                .then(r => r.json())
+                .then(data => {
+                    stats = data;
+                    document.getElementById('totalCount').textContent = data.total;
+                    document.getElementById('topWave').textContent = data.most_common_wave || 'N/A';
+                    document.getElementById('topSea').textContent = data.most_common_sea || 'N/A';
+                    document.getElementById('avgFreq').textContent = parseFloat(data.avg_frequency).toFixed(2) + ' Hz';
+                    document.getElementById('avgAmp').textContent = parseFloat(data.avg_amplitude).toFixed(4) + ' V';
+                    createWaveChart(data);
+                    createSeaChart(data);
+                    setStatus(true);
+                })
+                .catch(() => setStatus(false));
+
+            fetch('/api/readings?since_id=' + lastId)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.length > 0) {
+                        lastId = data[0].id;
+                        const tbody = document.getElementById('readingsTable');
+                        data.reverse().forEach(r => {
+                            const tr = document.createElement('tr');
+                            tr.setAttribute('data-channel', r.channel);
+                            tr.setAttribute('data-wave', r.wave_type);
+                            tr.className = 'new-row';
+                            tr.innerHTML =
+                                '<td>' + r.id + '</td>' +
+                                '<td>' + r.timestamp + '</td>' +
+                                '<td><span class="badge badge-' + (r.channel === 'CH1' ? 'ch1' : 'ch2') + '">' + r.channel + '</span></td>' +
+                                '<td><span class="badge badge-wave">' + r.wave_type + '</span></td>' +
+                                '<td><span class="badge badge-sea">' + r.sea_type + '</span></td>' +
+                                '<td>' + (r.amplitude ? parseFloat(r.amplitude).toFixed(4) : '-') + '</td>' +
+                                '<td>' + (r.frequency ? parseFloat(r.frequency).toFixed(2) + ' Hz' : '-') + '</td>' +
+                                '<td>' + (r.period ? parseFloat(r.period).toFixed(6) + ' s' : '-') + '</td>';
+                            tbody.insertBefore(tr, tbody.firstChild);
+                        });
+                        filterTable();
+                    }
+                })
+                .catch(() => {});
+
+            document.getElementById('lastUpdate').textContent = 'Actualizado: ' + new Date().toLocaleString('es-ES');
+        }
+
+        setInterval(autoRefresh, 5000);
+
+        document.getElementById('filterChannel').addEventListener('change', filterTable);
+        document.getElementById('filterWave').addEventListener('change', filterTable);
+
+        document.getElementById('clearBtn').addEventListener('click', function() {
+            if (!confirm('Se eliminaran todos los registros. Continuar?')) return;
+            fetch('/api/clear', { method: 'POST' })
+                .then(r => r.json())
+                .then(() => location.reload())
+                .catch(() => alert('Error al limpiar registros'));
+        });
+
+        function filterTable() {
+            const channel = document.getElementById('filterChannel').value;
+            const wave = document.getElementById('filterWave').value;
+            const rows = document.querySelectorAll('#readingsTable tr');
+
+            rows.forEach(row => {
+                const rowChannel = row.getAttribute('data-channel') || '';
+                const rowWave = row.getAttribute('data-wave') || '';
+                const channelMatch = !channel || rowChannel === channel;
+                const waveMatch = !wave || rowWave === wave;
+                row.style.display = (channelMatch && waveMatch) ? '' : 'none';
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,4 +1,5 @@
 from oscope import Oscilloscope, OscilloscopeSimulator
+from awg import AWG
 from classifier import Classifier, WaveType, SeaType
 from database import Database
 from typing import Optional
@@ -8,10 +9,14 @@ import sys
 
 
 class WaveReader:
-    def __init__(self, use_simulator: bool = False, frequency: float = 50.0, wave_type: Optional[str] = None):
+    def __init__(self, use_simulator: bool = False, use_awg: bool = False,
+                 frequency: float = 50.0, wave_type: Optional[str] = None):
         self.use_simulator = use_simulator
+        self.use_awg = use_awg
 
-        if use_simulator:
+        if use_awg:
+            self.scope = AWG()
+        elif use_simulator:
             self.scope = OscilloscopeSimulator(frequency=frequency, wave_type=wave_type)
         else:
             self.scope = Oscilloscope()
@@ -20,7 +25,8 @@ class WaveReader:
         self.db = Database()
 
     def connect(self) -> bool:
-        print("Conectando al osciloscopio...")
+        device_name = "AWG" if self.use_awg else "osciloscopio"
+        print(f"Conectando al {device_name}...")
         
         connected = self.scope.connect()
         
@@ -29,29 +35,43 @@ class WaveReader:
             try:
                 print(f"ID: {self.scope.get_id()}")
             except Exception:
-                print("Osciloscopio conectado (ID no disponible)")
+                print(f"{device_name.capitalize()} conectado (ID no disponible)")
             return True
         else:
             print("Error: No se pudo conectar")
             print("Sugerencias:")
-            print("  1. Verifica que el osciloscopio este conectado por USB")
-            print("  2. Verifica que este encendido y en modo PC/USBTMC")
-            print("  3. Usa --simulator para probar sin hardware")
+            if self.use_awg:
+                print("  1. Verifica que el AWG este conectado por USB")
+                print("  2. Verifica que este encendido")
+                print("  3. Usa --simulator para probar sin hardware")
+            else:
+                print("  1. Verifica que el osciloscopio este conectado por USB")
+                print("  2. Verifica que este encendido y en modo PC/USBTMC")
+                print("  3. Usa --simulator para probar sin hardware")
             return False
 
     def read_and_save(self, channel: int = 1):
         print(f"\nLeyendo canal CH{channel}...")
 
-        data, params = self.scope.read_channel(channel)
+        try:
+            data, params = self.scope.read_channel(channel)
+        except Exception as e:
+            print(f"Error leyendo del dispositivo: {e}")
+            data, params = [], {}
 
         if not data or len(data) < 10:
-            print("Datos insuficientes, usando simulador...")
-            simulator = OscilloscopeSimulator()
-            data = simulator.read_wave(channel)
-            params = {"v_scale": 1.0, "h_scale": 0.001, "sample_rate": 1000}
+            if self.use_awg:
+                print("AWG no responde, no se pueden obtener datos")
+            else:
+                print("Datos insuficientes, usando simulador...")
+                simulator = OscilloscopeSimulator()
+                data = simulator.read_wave(channel)
+                params = {"v_scale": 1.0, "h_scale": 0.001, "sample_rate": 1000}
 
         sample_rate = params.get("sample_rate", 1000)
         self.classifier = Classifier(sample_rate=sample_rate)
+
+        print(f"  Muestras: {len(data)} | Sample rate: {sample_rate} Hz | V/div: {params.get('v_scale', '?')} | T/div: {params.get('h_scale', '?')}s")
 
         wave_type, sea_type = self.classifier.classify_and_map(data)
         params_report = self.classifier.get_parameters(data)
@@ -136,6 +156,8 @@ def main():
     parser = argparse.ArgumentParser(description="Lector de ondas OWON SDS1202")
     parser.add_argument("--simulator", "-s", action="store_true",
                         help="Usar simulador en lugar de osciloscopio real")
+    parser.add_argument("--awg", action="store_true",
+                        help="Usar AWG AG051 en lugar de osciloscopio")
     parser.add_argument("--channel", "-c", type=int, default=1,
                         help="Canal a leer (1 o 2, default: 1)")
     parser.add_argument("--loop", "-l", action="store_true",
@@ -153,13 +175,17 @@ def main():
                         help="Tipo de onda del simulador (default: aleatorio)")
     
     args = parser.parse_args()
+
+    if args.simulator and args.awg:
+        parser.error("--simulator y --awg son mutuamente excluyentes")
     
     if args.recent > 0:
         reader = WaveReader(use_simulator=True)
         reader.show_recent(args.recent)
         return
     
-    reader = WaveReader(use_simulator=args.simulator, frequency=args.frequency, wave_type=args.wave_type)
+    reader = WaveReader(use_simulator=args.simulator, use_awg=args.awg,
+                        frequency=args.frequency, wave_type=args.wave_type)
     
     if not reader.connect():
         sys.exit(1)

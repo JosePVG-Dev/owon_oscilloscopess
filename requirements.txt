@@ -1,2 +1,6 @@
-pyusb
+flask
+pyvisa
+pyvisa-py
 numpy
+pyusb
+libusb-package

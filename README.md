@@ -5,48 +5,42 @@ Programa Python para leer ondas de un osciloscopio OWON SDS1202, clasificarlas y
 ## Requisitos
 
 - Python 3.7+
-- Librerías: `pyusb`, `numpy`
+- Librerías: `pyvisa`, `pyvisa-py`, `numpy`, `flask`
 
 ```bash
+python -m venv venv
+.\venv\Scripts\Activate.ps1   # Windows
 pip install -r requirements.txt
-```
-
-## Estructura
-
-```
-owon_oscilloscope/
-├── main.py       # Punto de entrada
-├── oscope.py    # Conexión USB/SCPI
-├── classifier.py # Clasificación ondas → olas
-├── database.py  # SQLite
-├── requirements.txt
-└── waveforms.db # Base de datos (se crea automáticamente)
 ```
 
 ## Uso
 
-### Modo simulador (pruebas)
+### Modo simulador (pruebas, sin hardware)
 ```bash
 python main.py --simulator
 ```
 
-### Leer canal específico
+### Modo simulador en loop continuo
 ```bash
-python main.py --channel 1
-python main.py -c 2
+python main.py --simulator --loop --interval 5
 ```
 
-### Leer ambos canales
+### Con osciloscopio real
 ```bash
-python main.py --all
+python main.py -c 1
 ```
 
-### Modo continuo
+### Dashboard web
 ```bash
-python main.py --loop --interval 10
+python dashboard.py          # http://localhost:5000
 ```
 
-### Mostrar últimos registros
+### Captura + Dashboard juntos
+```bash
+python run.py --simulator
+```
+
+### Ver registros
 ```bash
 python main.py --recent 10
 ```
@@ -61,20 +55,11 @@ python main.py --recent 10
 | Sierra | Ola de Tormenta |
 | Ruido | Mar Agitado |
 
-## Problemas Windows
+## Conexión
 
-Si hay error de conexión en Windows, instalar driver WinUSB:
+La conexión usa **PyVISA** (USBTMC). No requiere drivers adicionales si se usa `pyvisa-py`.
 
-1. Descargar [Zadig](https://zadig.akeo.ie/)
-2. Conectar osciloscopio
-3. En Zadig: seleccionar OWON → instalar WinUSB
-
-## Ver También
-
-```bash
-# Ver registros
-python main.py --recent 20
-
-# Modo interactivo
-python main.py --loop
-```
+Si hay problemas de conexión:
+1. Verifica que el osciloscopio esté en modo **PC/USBTMC** (no UDisk)
+2. Instala NI-VISA si pyvisa-py no detecta el dispositivo
+3. Usa `--simulator` para probar sin hardware

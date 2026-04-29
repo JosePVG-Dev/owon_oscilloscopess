@@ -1,5 +1,4 @@
 import sqlite3
-from datetime import datetime
 from typing import Optional
 
 
@@ -51,6 +50,22 @@ class Database:
                 LIMIT ?
             """, (limit,))
             return cursor.fetchall()
+
+    def get_since_id(self, since_id: int, limit: int = 500):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("""
+                SELECT * FROM waveforms 
+                WHERE id > ?
+                ORDER BY id DESC 
+                LIMIT ?
+            """, (since_id, limit))
+            return cursor.fetchall()
+
+    def clear(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM waveforms")
+            conn.commit()
 
     def get_all(self):
         with sqlite3.connect(self.db_path) as conn:

@@ -1,6 +1,15 @@
+import os
 import pyvisa
 from typing import List, Optional, Tuple
 import numpy as np
+
+try:
+    import libusb_package
+    _libusb_dir = os.path.dirname(libusb_package.get_library_path())
+    if _libusb_dir not in os.environ.get('PATH', ''):
+        os.environ['PATH'] = _libusb_dir + os.pathsep + os.environ.get('PATH', '')
+except Exception:
+    pass
 
 
 class Oscilloscope:
@@ -20,10 +29,10 @@ class Oscilloscope:
         self.disconnect()
 
     def _find_resource(self) -> Optional[str]:
+        if self.rm is None:
+            return None
         try:
-            rm = pyvisa.ResourceManager('@py')
-            resources = rm.list_resources()
-            rm.close()
+            resources = self.rm.list_resources()
         except Exception:
             return None
 

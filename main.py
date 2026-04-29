@@ -1,17 +1,18 @@
 from oscope import Oscilloscope, OscilloscopeSimulator
 from classifier import Classifier, WaveType, SeaType
 from database import Database
+from typing import Optional
 import time
 import argparse
 import sys
 
 
 class WaveReader:
-    def __init__(self, use_simulator: bool = False):
+    def __init__(self, use_simulator: bool = False, frequency: float = 50.0, wave_type: Optional[str] = None):
         self.use_simulator = use_simulator
-        
+
         if use_simulator:
-            self.scope = OscilloscopeSimulator()
+            self.scope = OscilloscopeSimulator(frequency=frequency, wave_type=wave_type)
         else:
             self.scope = Oscilloscope()
         
@@ -21,27 +22,21 @@ class WaveReader:
     def connect(self) -> bool:
         print("Conectando al osciloscopio...")
         
-        if self.use_simulator:
-            connected = self.scope.connect()
-        else:
-            connected = self.scope.connect()
+        connected = self.scope.connect()
         
         if connected:
-            print("Conexión exitosa!")
-            if self.use_simulator:
+            print("Conexion exitosa!")
+            try:
                 print(f"ID: {self.scope.get_id()}")
-            else:
-                try:
-                    print(f"ID: {self.scope.get_id()}")
-                except:
-                    print("Osciloscopio conectado (ID no disponible)")
+            except Exception:
+                print("Osciloscopio conectado (ID no disponible)")
             return True
         else:
             print("Error: No se pudo conectar")
             print("Sugerencias:")
-            print("  1. Verifica que el osciloscopio esté conectado por USB")
-            print("  2. Verifica que esté encendido")
-            print("  3. En Windows, puede requerir driver WinUSB (usar Zadig)")
+            print("  1. Verifica que el osciloscopio este conectado por USB")
+            print("  2. Verifica que este encendido y en modo PC/USBTMC")
+            print("  3. Usa --simulator para probar sin hardware")
             return False
 
     def read_and_save(self, channel: int = 1):
@@ -51,7 +46,8 @@ class WaveReader:
         
         if not data or len(data) < 10:
             print("Datos insuficientes, usando simulador...")
-            data = self.scope.read_wave(channel)
+            simulator = OscilloscopeSimulator()
+            data = simulator.read_wave(channel)
         
         wave_type, sea_type = self.classifier.classify_and_map(data)
         params = self.classifier.get_parameters(data)
@@ -62,7 +58,7 @@ class WaveReader:
         if params:
             print(f"  Amplitud: {params.get('amplitude', 0):.4f} V")
             print(f"  Frecuencia: {params.get('frequency', 0):.2f} Hz")
-            print(f"  Período: {params.get('period', 0):.6f} s")
+            print(f"  Periodo: {params.get('period', 0):.6f} s")
         
         db_id = self.db.save_waveform(
             wave_type=wave_type.value,
@@ -93,7 +89,7 @@ class WaveReader:
         if channels is None:
             channels = [1, 2]
         
-        print(f"\nIniciando lettura automática cada {interval} segundos...")
+        print(f"\nIniciando lectura automatica cada {interval} segundos...")
         print("Presiona Ctrl+C para detener\n")
         
         try:
@@ -101,7 +97,7 @@ class WaveReader:
             while True:
                 iteration += 1
                 print(f"\n{'='*50}")
-                print(f"Iteración #{iteration}")
+                print(f"Iteracion #{iteration}")
                 print(f"{'='*50}")
                 
                 for ch in channels:
@@ -118,20 +114,18 @@ class WaveReader:
     def show_recent(self, limit: int = 10):
         records = self.db.get_recent(limit)
         
-        print(f"\nÚltimas {limit} lecturas:")
+        print(f"\nUltimas {limit} lecturas:")
         print("-" * 70)
         
         for row in records:
             print(f"ID: {row['id']} | {row['timestamp']} | {row['channel']}")
             print(f"  Onda: {row['wave_type']} => Ola: {row['sea_type']}")
             if row['frequency']:
-                print(f"  Frecuencia: {row['frequency']:.2f} Hz | Período: {row['period']:.6f} s")
+                print(f"  Frecuencia: {row['frequency']:.2f} Hz | Periodo: {row['period']:.6f} s")
             print()
 
     def disconnect(self):
-        if not self.use_simulator:
-            self.scope.disconnect()
-        print("Desconectado")
+        self.scope.disconnect()
 
 
 def main():
@@ -148,18 +142,26 @@ def main():
                         help="Mostrar recent N registros y salir")
     parser.add_argument("--all", "-a", action="store_true",
                         help="Leer todos los canales (CH1 y CH2)")
+    parser.add_argument("--frequency", type=float, default=50.0,
+                        help="Frecuencia del simulador en Hz (default: 50)")
+    parser.add_argument("--wave-type", type=str, default=None,
+                        choices=["senoidal", "cuadrada", "triangular", "sierra", "ruido"],
+                        help="Tipo de onda del simulador (default: aleatorio)")
     
     args = parser.parse_args()
     
-    reader = WaveReader(use_simulator=args.simulator)
+    if args.recent > 0:
+        reader = WaveReader(use_simulator=True)
+        reader.show_recent(args.recent)
+        return
+    
+    reader = WaveReader(use_simulator=args.simulator, frequency=args.frequency, wave_type=args.wave_type)
     
     if not reader.connect():
         sys.exit(1)
     
     try:
-        if args.recent > 0:
-            reader.show_recent(args.recent)
-        elif args.loop:
+        if args.loop:
             channels = [1, 2] if args.all else [args.channel]
             reader.loop(interval=args.interval, channels=channels)
         elif args.all:

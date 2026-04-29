@@ -159,63 +159,27 @@ class Classifier:
         if len(data) < 10:
             return WaveType.RUIDO
 
-        analysis = self.analyze(data)
-        amplitude_range = analysis["amplitude_range"]
+        arr = np.array(data)
+        amplitude_range = np.max(arr) - np.min(arr)
 
         if amplitude_range < 0.01:
             return WaveType.RUIDO
 
-        autocorr = analysis["autocorr"]
-        positive_ratio = analysis["positive_ratio"]
-        unique_ratio = analysis["unique_ratio"]
-        unique_values = analysis["unique_values"]
-        std_ratio = analysis["std_ratio"]
-        mean_diff = analysis["mean_diff"]
+        centered = arr - np.mean(arr)
+        if np.std(centered) > 1e-10:
+            autocorr = float(np.corrcoef(centered[:-1], centered[1:])[0, 1])
+            if autocorr < 0.15:
+                return WaveType.RUIDO
 
-        if autocorr < 0.3:
+        freq = self._estimate_frequency_fft(arr)
+        if freq < 1e-6:
             return WaveType.RUIDO
 
-        arr = np.array(data)
-        diffs = np.diff(arr)
+        cycle = self._extract_one_cycle(arr, freq)
+        if cycle is not None and len(cycle) >= 10:
+            return self._classify_by_template(cycle)
 
-        abs_pos_diffs = np.mean(np.abs(diffs[diffs > 0])) if np.any(diffs > 0) else 0
-        abs_neg_diffs = np.mean(np.abs(diffs[diffs < 0])) if np.any(diffs < 0) else 0
-        ramp_symmetry = 0.0
-        if abs_pos_diffs > 1e-10 and abs_neg_diffs > 1e-10:
-            ramp_symmetry = min(abs_pos_diffs, abs_neg_diffs) / max(abs_pos_diffs, abs_neg_diffs)
-
-        second_diffs = np.abs(np.diff(diffs))
-        edge_count = np.sum(second_diffs > amplitude_range * 0.3)
-
-        if std_ratio < 0.05 and autocorr > 0.8:
-            return WaveType.TRIANGULAR
-
-        if positive_ratio > 0.85 or positive_ratio < 0.15:
-            if autocorr > 0.7:
-                if edge_count > 0:
-                    return WaveType.SIERRA
-
-        if unique_ratio < 0.05:
-            if unique_values <= 5 and amplitude_range > 0.1:
-                return WaveType.CUADRADA
-            if ramp_symmetry > 0.7 and autocorr > 0.7:
-                return WaveType.TRIANGULAR
-
-        if autocorr > 0.5:
-            if ramp_symmetry > 0.85 and autocorr > 0.7 and abs(positive_ratio - 0.5) < 0.15:
-                return WaveType.TRIANGULAR
-
-        if autocorr > 0.9:
-            if 0.35 < positive_ratio < 0.65:
-                return WaveType.SINUSOIDAL
-
-        if autocorr > 0.5:
-            if std_ratio < 0.8:
-                return WaveType.SINUSOIDAL
-            if positive_ratio > 0.6 or positive_ratio < 0.4:
-                return WaveType.SIERRA
-
-        return WaveType.RUIDO
+        return self._classify_by_template(arr)
 
     def map_to_sea(self, wave_type: WaveType) -> SeaType:
         return WAVE_TO_SEA.get(wave_type, SeaType.AGITADO)

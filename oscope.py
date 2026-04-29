@@ -190,9 +190,17 @@ class Oscilloscope:
             except Exception:
                 h_scale = 0.001
 
+            sample_rate = 1000
+            try:
+                sr_resp = self.send_command(":ACQuire:SRATe?")
+                sample_rate = int(float(sr_resp.strip()))
+            except Exception:
+                pass
+
             params = {
                 "v_scale": v_scale,
                 "h_scale": h_scale,
+                "sample_rate": sample_rate,
             }
 
         return data, params

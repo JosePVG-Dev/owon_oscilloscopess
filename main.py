@@ -41,32 +41,36 @@ class WaveReader:
 
     def read_and_save(self, channel: int = 1):
         print(f"\nLeyendo canal CH{channel}...")
-        
-        data = self.scope.read_wave(channel)
-        
+
+        data, params = self.scope.read_channel(channel)
+
         if not data or len(data) < 10:
             print("Datos insuficientes, usando simulador...")
             simulator = OscilloscopeSimulator()
             data = simulator.read_wave(channel)
-        
+            params = {"v_scale": 1.0, "h_scale": 0.001, "sample_rate": 1000}
+
+        sample_rate = params.get("sample_rate", 1000)
+        self.classifier = Classifier(sample_rate=sample_rate)
+
         wave_type, sea_type = self.classifier.classify_and_map(data)
-        params = self.classifier.get_parameters(data)
+        params_report = self.classifier.get_parameters(data)
         
         print(f"  Tipo de onda: {wave_type.value}")
         print(f"  Tipo de ola: {sea_type.value}")
         
-        if params:
-            print(f"  Amplitud: {params.get('amplitude', 0):.4f} V")
-            print(f"  Frecuencia: {params.get('frequency', 0):.2f} Hz")
-            print(f"  Periodo: {params.get('period', 0):.6f} s")
+        if params_report:
+            print(f"  Amplitud: {params_report.get('amplitude', 0):.4f} V")
+            print(f"  Frecuencia: {params_report.get('frequency', 0):.2f} Hz")
+            print(f"  Periodo: {params_report.get('period', 0):.6f} s")
         
         db_id = self.db.save_waveform(
             wave_type=wave_type.value,
             sea_type=sea_type.value,
             channel=f"CH{channel}",
-            amplitude=params.get("amplitude") if params else None,
-            frequency=params.get("frequency") if params else None,
-            period=params.get("period") if params else None
+            amplitude=params_report.get("amplitude") if params_report else None,
+            frequency=params_report.get("frequency") if params_report else None,
+            period=params_report.get("period") if params_report else None
         )
         
         print(f"  Guardado en BD (ID: {db_id})")

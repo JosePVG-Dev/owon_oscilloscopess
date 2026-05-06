@@ -96,6 +96,11 @@
             </div>
         </div>
 
+        <div class="chart-card" style="margin-bottom: 1.5rem;">
+            <h3>Forma de Onda Actual</h3>
+            <canvas id="waveformChart" style="max-height: 300px;"></canvas>
+        </div>
+
         <div class="charts-grid">
             <div class="chart-card">
                 <h3>Distribucion de Ondas</h3>
@@ -189,6 +194,7 @@
         let lastId = {{ records[0].id if records else 0 }};
         let waveChartInstance = null;
         let seaChartInstance = null;
+        let waveformChartInstance = null;
 
         function setStatus(connected) {
             const el = document.getElementById('statusIndicator');
@@ -251,6 +257,7 @@
 
         createWaveChart(stats);
         createSeaChart(stats);
+        updateWaveformChart();
 
         document.getElementById('lastUpdate').textContent = 'Actualizado: ' + new Date().toLocaleString('es-ES');
 
@@ -299,7 +306,61 @@
                 })
                 .catch(() => {});
 
+            updateWaveformChart();
+
             document.getElementById('lastUpdate').textContent = 'Actualizado: ' + new Date().toLocaleString('es-ES');
+        }
+
+        function updateWaveformChart() {
+            fetch('/api/latest')
+                .then(r => r.json())
+                .then(latest => {
+                    if (!latest || !latest.data || latest.data.length < 2) return;
+                    const samples = latest.data;
+                    const labels = samples.map((_, i) => i);
+                    if (waveformChartInstance) {
+                        waveformChartInstance.data.labels = labels;
+                        waveformChartInstance.data.datasets[0].data = samples;
+                        waveformChartInstance.update('none');
+                    } else {
+                        waveformChartInstance = new Chart(document.getElementById('waveformChart'), {
+                            type: 'line',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    data: samples,
+                                    borderColor: '#36a2eb',
+                                    backgroundColor: '#36a2eb22',
+                                    borderWidth: 1.5,
+                                    pointRadius: 0,
+                                    tension: 0.1,
+                                    fill: true
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                animation: { duration: 0 },
+                                plugins: {
+                                    legend: { display: false }
+                                },
+                                scales: {
+                                    x: {
+                                        display: true,
+                                        ticks: { color: '#8899aa', font: { size: 10 } },
+                                        grid: { color: '#1f2f3f' }
+                                    },
+                                    y: {
+                                        display: true,
+                                        ticks: { color: '#8899aa', font: { size: 10 } },
+                                        grid: { color: '#1f2f3f' }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                })
+                .catch(() => {});
         }
 
         setInterval(autoRefresh, 5000);

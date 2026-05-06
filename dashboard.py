@@ -1,4 +1,5 @@
 from flask import Flask, render_template, jsonify, request
+import json
 from database import Database
 
 app = Flask(__name__)
@@ -72,6 +73,12 @@ def api_latest():
     if not records:
         return jsonify(None)
     r = records[0]
+    waveform_data = None
+    if r["data"] is not None:
+        try:
+            waveform_data = json.loads(r["data"])
+        except (json.JSONDecodeError, TypeError):
+            waveform_data = None
     return jsonify({
         "id": r["id"],
         "timestamp": r["timestamp"],
@@ -81,6 +88,7 @@ def api_latest():
         "amplitude": r["amplitude"],
         "frequency": r["frequency"],
         "period": r["period"],
+        "data": waveform_data,
     })
 
 

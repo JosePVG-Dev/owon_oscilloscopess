@@ -93,7 +93,8 @@ class WaveReader:
             channel=f"CH{channel}",
             amplitude=params_report.get("amplitude") if params_report else None,
             frequency=params_report.get("frequency") if params_report else None,
-            period=params_report.get("period") if params_report else None
+            period=params_report.get("period") if params_report else None,
+            data=data
         )
         
         print(f"  Guardado en BD (ID: {db_id})")

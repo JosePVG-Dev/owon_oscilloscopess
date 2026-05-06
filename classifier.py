@@ -171,15 +171,40 @@ class Classifier:
             if autocorr < 0.15:
                 return WaveType.RUIDO
 
+        unique_ratio = len(np.unique(np.round(arr, 3))) / len(arr)
+        if unique_ratio < 0.05:
+            return WaveType.CUADRADA
+
+        diffs = np.diff(arr)
+        if len(diffs) > 0:
+            positive_ratio = np.sum(diffs > 0) / len(diffs)
+            if abs(positive_ratio - 0.5) > 0.3:
+                return WaveType.SIERRA
+
         freq = self._estimate_frequency_fft(arr)
         if freq < 1e-6:
             return WaveType.RUIDO
 
         cycle = self._extract_one_cycle(arr, freq)
-        if cycle is not None and len(cycle) >= 10:
-            return self._classify_by_template(cycle)
+        target = cycle if cycle is not None and len(cycle) >= 10 else arr
 
-        return self._classify_by_template(arr)
+        normalized = self._normalize_cycle(target)
+        n = len(normalized)
+        t = np.linspace(0, 1, n, endpoint=False)
+
+        sine_template = np.sin(2 * np.pi * t)
+        tri_template = 1.0 - 4.0 * np.abs(t - 0.5)
+
+        sine_score = self._max_correlation(normalized, sine_template)
+        tri_score = self._max_correlation(normalized, tri_template)
+
+        best_score = max(sine_score, tri_score)
+        if best_score < 0.3:
+            return WaveType.RUIDO
+
+        if sine_score >= tri_score:
+            return WaveType.SINUSOIDAL
+        return WaveType.TRIANGULAR
 
     def map_to_sea(self, wave_type: WaveType) -> SeaType:
         return WAVE_TO_SEA.get(wave_type, SeaType.AGITADO)

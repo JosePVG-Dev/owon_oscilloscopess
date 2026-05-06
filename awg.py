@@ -41,12 +41,14 @@ class AWG:
 
     def __init__(self, vid: int = 0x5345, pid: int = 0x1234,
                  serial: str = 'AG0512117060',
-                 endpoint_out: int = 3, endpoint_in: int = 0x81):
+                 endpoint_out: int = 3, endpoint_in: int = 0x81,
+                 frequency: float = 1000.0):
         self.vid = vid
         self.pid = pid
         self.serial = serial
         self.endpoint_out = endpoint_out
         self.endpoint_in = endpoint_in
+        self._frequency = frequency
         self.dev = None
         self.connected = False
         self._last_config: Optional[dict] = None
@@ -97,6 +99,8 @@ class AWG:
         for _ in range(5):
             try:
                 self.dev.read(self.endpoint_in, 10000, 200)
+            except usb.core.USBError:
+                continue
             except Exception:
                 break
 
@@ -116,10 +120,12 @@ class AWG:
         except Exception:
             return False
 
-    def _query(self, cmd: str, delay: float = 0.4, timeout: int = 800,
+    def _query(self, cmd: str, delay: float = 0.3, timeout: int = 800,
                retries: int = 3) -> str:
         if not self.dev:
             raise RuntimeError("No conectado")
+
+        self._clear_buffer()
 
         last_error = None
         for attempt in range(retries):
@@ -132,7 +138,6 @@ class AWG:
             except usb.core.USBError as e:
                 last_error = e
                 if attempt < retries - 1:
-                    # Intentar reconectar antes del siguiente retry
                     time.sleep(0.5)
                     if not self._reconnect():
                         time.sleep(0.5)
@@ -155,25 +160,20 @@ class AWG:
             raise
 
     def get_config(self, use_cache: bool = True) -> dict:
-        """Read current AWG configuration. Uses cache if recent."""
+        """Read current AWG configuration. Uses cache if recent.
+        
+        The AG051 firmware (V3.0.0) only properly supports :FUNC? — :FREQ? and
+        :PER? return garbage. Frequency is taken from the fallback parameter
+        (default or user-specified via --frequency).
+        """
         now = time.time()
         if use_cache and self._last_config is not None:
             if (now - self._last_config_time) < self.CONFIG_CACHE_TTL:
                 return self._last_config
 
         func_raw = self._query(':FUNC?')
-        freq_raw = self._query(':FREQ?')
-        per_raw = self._query(':PER?')
-
-        try:
-            frequency = float(freq_raw)
-        except ValueError:
-            frequency = 1000.0
-
-        try:
-            period = float(per_raw)
-        except ValueError:
-            period = 1.0 / frequency if frequency > 0 else 0.001
+        frequency = self._frequency
+        period = 1.0 / frequency if frequency > 0 else 0.001
 
         wave_type = self.WAVE_MAP.get(func_raw.upper(), 'senoidal')
 

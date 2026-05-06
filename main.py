@@ -15,7 +15,7 @@ class WaveReader:
         self.use_awg = use_awg
 
         if use_awg:
-            self.scope = AWG()
+            self.scope = AWG(frequency=frequency)
         elif use_simulator:
             self.scope = OscilloscopeSimulator(frequency=frequency, wave_type=wave_type)
         else:
@@ -62,11 +62,14 @@ class WaveReader:
         if not data or len(data) < 10:
             if self.use_awg:
                 print("AWG no responde, no se pueden obtener datos")
-            else:
-                print("Datos insuficientes, usando simulador...")
-                simulator = OscilloscopeSimulator()
-                data = simulator.read_wave(channel)
+                return None
+            elif self.use_simulator:
+                print("Datos insuficientes, regenerando datos simulados...")
+                data = self.scope.read_wave(channel)
                 params = {"v_scale": 1.0, "h_scale": 0.001, "sample_rate": 1000}
+            else:
+                print("Datos insuficientes del dispositivo, saltando iteracion...")
+                return None
 
         sample_rate = params.get("sample_rate", 1000)
         self.classifier = Classifier(sample_rate=sample_rate)

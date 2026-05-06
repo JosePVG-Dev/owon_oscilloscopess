@@ -70,6 +70,8 @@ class Oscilloscope:
             self.resource = self.rm.open_resource(resource)
             self.resource.timeout = 5000
             self.resource.chunk_size = 102400
+            self.resource.write_termination = '\r'
+            self.resource.read_termination = '\n'
 
             idn = self.resource.query("*IDN?")
             print(f"Conectado a: {idn.strip()}")
@@ -142,13 +144,10 @@ class Oscilloscope:
         if not self.connected or not self.resource:
             raise RuntimeError("No conectado")
 
-        command = f":DATA:WAVE:SCREen:CH{channel}?"
-
         try:
-            raw = self.send_query_raw(command)
-            data = self._parse_wave_data(raw)
-            return data
-        except Exception as e:
+            raw = self.send_query_raw(f":DATA:WAVE:SCREen:CH{channel}?")
+            return self._parse_wave_data(raw)
+        except pyvisa.errors.VisaIOError as e:
             print(f"Error leyendo onda CH{channel}: {e}")
             return []
 
@@ -156,22 +155,36 @@ class Oscilloscope:
         if len(raw) < 2:
             return []
 
-        try:
-            header_pos = raw.find(b'#')
-            if header_pos >= 0:
-                num_digits = int(chr(raw[header_pos + 1]))
-                data_length = int(raw[header_pos + 2:header_pos + 2 + num_digits])
-                data_start = header_pos + 2 + num_digits
-            else:
-                data_start = 4
-                data_length = len(raw) - data_start
+        # Format 1: IEEE 488.2 definite-length block (#NXXXXX...data...)
+        header_pos = raw.find(b'#')
+        if header_pos >= 0 and header_pos + 1 < len(raw):
+            try:
+                n_digits = int(chr(raw[header_pos + 1]))
+                if header_pos + 1 + n_digits < len(raw):
+                    skip = header_pos + 2 + n_digits
+                    data_bytes = raw[skip:skip + int(raw[header_pos + 2:skip])]
+                    return self._decode_int16_samples(data_bytes)
+            except (ValueError, IndexError):
+                pass
 
-            data_bytes = raw[data_start:data_start + data_length]
-        except (ValueError, IndexError):
-            data_start = 4
-            data_bytes = raw[data_start:]
+        # Format 2: OWON raw format: [4 bytes LE: byte_count][int16 LE samples...]
+        if len(raw) >= 4:
+            byte_count = int.from_bytes(raw[:4], 'little', signed=False)
+            if byte_count > 0 and byte_count <= len(raw) - 4:
+                data_bytes = raw[4:4 + byte_count]
+                return self._decode_int16_samples(data_bytes)
+            # byte_count == 0 means no data available
+            if byte_count == 0:
+                return []
 
+        # Format 3: Raw int16 samples (no header, fallback)
+        return self._decode_int16_samples(raw)
+
+    def _decode_int16_samples(self, data_bytes: bytes) -> List[float]:
         values = []
+        # OWON uses 8-bit ADC values packed as bytes, or could be int16
+        # Each sample is 1-2 bytes depending on format
+        # Try parsing as 2-byte int16 LE first
         for i in range(0, len(data_bytes) - 1, 2):
             try:
                 value = int.from_bytes(data_bytes[i:i+2], 'little', signed=True)
@@ -179,6 +192,12 @@ class Oscilloscope:
                 values.append(normalized)
             except Exception:
                 continue
+
+        # If no values parsed (odd length or single byte), try as uint8
+        if len(values) == 0 and len(data_bytes) > 0:
+            for b in data_bytes:
+                normalized = (b - 128) / 128.0
+                values.append(normalized)
 
         return values
 
@@ -188,14 +207,14 @@ class Oscilloscope:
         params = {}
         if data:
             try:
-                scale_resp = self.send_command(f":CHANnel{channel}:SCALe?")
-                v_scale = float(scale_resp.strip())
+                scale_resp = self.send_command(f":CH{channel}:SCAL?")
+                v_scale = float(scale_resp.strip().replace('->', ''))
             except Exception:
                 v_scale = 1.0
 
             try:
-                time_resp = self.send_command(":TIMebase:SCALe?")
-                h_scale = float(time_resp.strip())
+                time_resp = self.send_command(":HOR:SCAL?")
+                h_scale = float(time_resp.strip().replace('->', ''))
             except Exception:
                 h_scale = 0.001
 

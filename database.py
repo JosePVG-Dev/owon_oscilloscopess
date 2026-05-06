@@ -1,5 +1,6 @@
 import sqlite3
-from typing import Optional
+import json
+from typing import Optional, List
 
 
 class Database:
@@ -21,6 +22,10 @@ class Database:
                     period REAL
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE waveforms ADD COLUMN data TEXT")
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
 
     def save_waveform(
@@ -30,14 +35,16 @@ class Database:
         channel: str,
         amplitude: Optional[float] = None,
         frequency: Optional[float] = None,
-        period: Optional[float] = None
+        period: Optional[float] = None,
+        data: Optional[List[float]] = None
     ) -> int:
+        data_json = json.dumps(data) if data is not None else None
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
                 INSERT INTO waveforms 
-                (wave_type, sea_type, channel, amplitude, frequency, period)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (wave_type, sea_type, channel, amplitude, frequency, period))
+                (wave_type, sea_type, channel, amplitude, frequency, period, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (wave_type, sea_type, channel, amplitude, frequency, period, data_json))
             conn.commit()
             return cursor.lastrowid
 

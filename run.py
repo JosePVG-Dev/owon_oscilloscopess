@@ -10,8 +10,8 @@ def main():
                         help="Usar simulador en lugar de osciloscopio real")
     parser.add_argument("--awg", action="store_true",
                         help="Usar AWG AG051 en lugar de osciloscopio")
-    parser.add_argument("--interval", type=float, default=5.0,
-                        help="Intervalo entre lecturas en segundos (default: 5)")
+    parser.add_argument("--interval", type=float, default=2.0,
+                        help="Intervalo entre lecturas en segundos (default: 2)")
     parser.add_argument("--port", type=int, default=5000,
                         help="Puerto del dashboard (default: 5000)")
     parser.add_argument("--channel", "-c", type=int, default=1,

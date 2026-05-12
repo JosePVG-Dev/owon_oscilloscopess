@@ -4,3 +4,4 @@ pyvisa-py
 numpy
 pyusb
 libusb-package
+openpyxl

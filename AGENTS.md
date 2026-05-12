@@ -15,7 +15,7 @@ pip install -r requirements.txt
 
 # === Simulator (no hardware needed) ===
 python main.py --simulator
-python main.py --simulator --loop --interval 5
+python main.py --simulator --loop --interval 2
 python main.py --simulator --frequency 50 --wave-type senoidal
 
 # === AWG AG051 (reads config from real device) ===
@@ -43,7 +43,7 @@ python run.py -c 1
 - `classifier.py` — Rule-based heuristic using FFT, autocorrelation, ramp symmetry, edge detection. Maps `WaveType` → `SeaType`.
 - `database.py` — SQLite persistence, auto-creates `waveforms.db`. No UPDATE/DELETE.
 - `main.py` — CLI entry point. `WaveReader` orchestrates: scope/AWG/sim → classify → save. `--recent` does NOT require device connection.
-- `dashboard.py` — Flask web app, polls DB every 5s via JS. Templates in `templates/index.html`.
+- `dashboard.py` — Flask web app, polls DB every 2s via JS. Templates in `templates/index.html`.
 - `run.py` — Launches capture loop + dashboard simultaneously.
 
 ## Data Sources
@@ -96,7 +96,7 @@ Terminator: `\r` for writes, `\n` for reads. Response format: `VALUE->\n`.
 - **`Classifier` uses FFT for frequency estimation** (not zero-crossing). Signal is mean-centered before analysis.
 - **`OscilloscopeSimulator.read_wave()` returns a random wave type each call.** Signals are centered at zero.
 - **No test suite exists.**
-- **Dashboard auto-refreshes** via JS `setInterval(5000)`.
+- **Dashboard auto-refreshes** via JS `setInterval(2000)`.
 
 ## Dependencies
 

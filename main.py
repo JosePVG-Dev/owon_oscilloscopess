@@ -166,8 +166,8 @@ def main():
                         help="Canal a leer (1 o 2, default: 1)")
     parser.add_argument("--loop", "-l", action="store_true",
                         help="Modo loop continuo")
-    parser.add_argument("--interval", type=float, default=5.0,
-                        help="Intervalo entre lecturas en segundos (default: 5)")
+    parser.add_argument("--interval", type=float, default=2.0,
+                        help="Intervalo entre lecturas en segundos (default: 2)")
     parser.add_argument("--recent", "-r", type=int, default=0,
                         help="Mostrar recent N registros y salir")
     parser.add_argument("--all", "-a", action="store_true",

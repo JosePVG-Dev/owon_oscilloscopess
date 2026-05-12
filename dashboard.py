@@ -1,5 +1,9 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file
 import json
+from io import BytesIO
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 from database import Database
 
 app = Flask(__name__)
@@ -90,6 +94,89 @@ def api_latest():
         "period": r["period"],
         "data": waveform_data,
     })
+
+
+@app.route("/api/export")
+def api_export():
+    records = db.get_all()
+    wb = Workbook()
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="36A2EB", end_color="36A2EB", fill_type="solid")
+
+    # --- Hoja 1: Resumen ---
+    ws1 = wb.active
+    ws1.title = "Resumen"
+    headers1 = ["ID", "Fecha/Hora", "Canal", "Onda", "Mar",
+                "Amplitud (V)", "Frecuencia (Hz)", "Periodo (s)"]
+    for col_idx, h in enumerate(headers1, 1):
+        cell = ws1.cell(row=1, column=col_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+
+    for row_idx, r in enumerate(records, 2):
+        ws1.cell(row=row_idx, column=1, value=r["id"])
+        ws1.cell(row=row_idx, column=2, value=r["timestamp"])
+        ws1.cell(row=row_idx, column=3, value=r["channel"])
+        ws1.cell(row=row_idx, column=4, value=WAVE_LABELS.get(r["wave_type"], r["wave_type"]))
+        ws1.cell(row=row_idx, column=5, value=SEA_LABELS.get(r["sea_type"], r["sea_type"]))
+        if r["amplitude"] is not None:
+            ws1.cell(row=row_idx, column=6, value=round(r["amplitude"], 4))
+        if r["frequency"] is not None:
+            ws1.cell(row=row_idx, column=7, value=round(r["frequency"], 2))
+        if r["period"] is not None:
+            ws1.cell(row=row_idx, column=8, value=round(r["period"], 6))
+
+    for col_idx in range(1, 9):
+        ws1.column_dimensions[get_column_letter(col_idx)].width = 18
+
+    # --- Hoja 2: Muestras ---
+    ws2 = wb.create_sheet("Muestras")
+    rows_with_data = []
+    max_samples = 0
+    for r in records:
+        if r["data"] is None:
+            continue
+        try:
+            samples = json.loads(r["data"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not samples:
+            continue
+        rows_with_data.append((r["id"], r["period"], samples))
+        max_samples = max(max_samples, len(samples))
+
+    headers2 = ["ID"] + [f"t_{i} (s)" for i in range(max_samples)]
+    for col_idx, h in enumerate(headers2, 1):
+        cell = ws2.cell(row=1, column=col_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+
+    for row_idx, (w_id, period, samples) in enumerate(rows_with_data, 2):
+        ws2.cell(row=row_idx, column=1, value=w_id)
+        n = len(samples)
+        if period and n > 1:
+            dt = period / (n - 1)
+        else:
+            dt = 0
+        for i, val in enumerate(samples):
+            cell = ws2.cell(row=row_idx, column=2 + i, value=round(val, 4))
+        for i in range(max_samples):
+            ts_cell = ws2.cell(row=1, column=2 + i)
+            if dt:
+                ts_cell.value = f"t={round(i * dt, 6)}s"
+
+    for col_idx in range(1, max_samples + 2):
+        ws2.column_dimensions[get_column_letter(col_idx)].width = 12
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="waveforms.xlsx",
+    )
 
 
 @app.route("/api/clear", methods=["POST"])
